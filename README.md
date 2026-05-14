@@ -1,73 +1,148 @@
-# React + TypeScript + Vite
+# SlideBox Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application for SlideBox image gallery.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- React
+- TypeScript
+- Redux Toolkit
+- Tailwind CSS
+- Axios
+- Vite
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+# Features
 
-## Expanding the ESLint configuration
+- JWT authentication
+- Infinite scrolling
+- Drag & drop image reordering
+- Image upload
+- Edit image title
+- Replace image
+- Responsive gallery UI
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+---
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+# Prerequisites
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Make sure you have installed:
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js (v18 or later)
+- npm
+
+---
+
+# Installation
+
+Clone the repository:
+
+```bash
+git clone <repository-url>
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Navigate to frontend folder:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+cd frontend
+```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Install dependencies:
+
+```bash
+npm install
+```
+
+---
+
+# Environment Variables
+
+Create a `.env` file in frontend root.
+
+Example:
+
+```env
+VITE_API_URL=http://localhost:5000/api
+```
+
+---
+
+# Run Development Server
+
+```bash
+npm run dev
+```
+
+Application will run on:
+
+```txt
+http://localhost:5173
+```
+
+---
+
+# Build Project
+
+```bash
+npm run build
+```
+
+---
+
+# Preview Production Build
+
+```bash
+npm run preview
+```
+
+---
+
+# Project Structure
+
+```txt
+src/
+│
+├── api/
+├── components/
+├── pages/
+├── redux/
+├── services/
+├── types/
+└── utils/
+```
+
+---
+
+# Authentication Flow
+
+- Access token stored in memory
+- Refresh token stored in HTTP-only cookie
+- Automatic token refresh using Axios interceptors
+
+---
+
+# Drag and Drop Reordering
+
+Images can be reordered using drag-and-drop functionality.
+
+The frontend sends:
+
+```json
+{
+  "draggedId": "image-id",
+  "targetOrder": 5
+}
+```
+
+to backend for optimized reordering.
+
+---
+
+# Scripts
+
+```bash
+npm run dev
+npm run build
+npm run preview
 ```
