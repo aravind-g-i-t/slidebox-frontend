@@ -33,6 +33,7 @@ export default function HomePage() {
     const uploadFileRef = useRef<HTMLInputElement>(null);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
     const [draggingItem, setDraggingItem] = useState<string | null>(null)
     const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
     const [editTitle, setEditTitle] = useState("");
@@ -44,9 +45,7 @@ export default function HomePage() {
     const limit = 20;
 
     const fetchImages = useCallback(async () => {
-        if (loading) return;
-
-        if (totalCount !== 0 && images.length >= totalCount) return;
+        if (loading || !hasMore) return;
 
         try {
             setLoading(true);
@@ -58,17 +57,21 @@ export default function HomePage() {
                 })
             ).unwrap();
 
-            setImages((prev) => [...prev, ...result.data.images]);
+            const newImages = result.data.images;
 
+            setImages((prev) => [...prev, ...newImages]);
             setTotalCount(result.data.totalCount);
-        } catch (error) {
-            if (error instanceof AxiosError) {
-                console.log(error.message);
+
+            if (newImages.length === 0 || images.length + newImages.length >= result.data.totalCount) {
+                setHasMore(false);
             }
+
+        } catch (error) {
+            console.log(error);
         } finally {
             setLoading(false);
         }
-    }, [dispatch, images.length, totalCount, loading]);
+    }, [dispatch, images.length, loading, hasMore]);
 
     useEffect(() => {
         const currentLoader = loaderRef.current;
