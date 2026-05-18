@@ -2,6 +2,7 @@ import axios from "axios";
 import type { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "axios";
 import { store } from "../redux/store";
 import { logout, tokenRefresh } from "../services/authServices";
+import { clearUser } from "../redux/slices/userSlice";
 
 const apiURL = import.meta.env.VITE_API_URL
 
@@ -19,7 +20,8 @@ axiosInstance.interceptors.response.use(
         const originalRequest = error.config as InternalAxiosRequestConfig & {
             _retry?: boolean;
         };
-
+        console.log(error);
+        
         const errData = error.response?.data as ErrorResponse | undefined;
 
         if (
@@ -36,6 +38,7 @@ axiosInstance.interceptors.response.use(
                 return axiosInstance(originalRequest);
             } catch {
                 await store.dispatch(logout());
+                store.dispatch(clearUser())
                 console.log("Session has expired. Please login again.")
             }
         }

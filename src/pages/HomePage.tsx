@@ -33,6 +33,7 @@ export default function HomePage() {
     const uploadFileRef = useRef<HTMLInputElement>(null);
     const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [draggingItem, setDraggingItem] = useState<string | null>(null)
     const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
@@ -45,33 +46,41 @@ export default function HomePage() {
     const limit = 20;
 
     const fetchImages = useCallback(async () => {
-        if (loading || !hasMore) return;
 
-        try {
-            setLoading(true);
+    if (loading || !hasMore || fetchError) return;
 
-            const result = await dispatch(
-                getImages({
-                    limit,
-                    skip: images.length,
-                })
-            ).unwrap();
+    try {
+        setLoading(true);
+        setFetchError(false);
 
-            const newImages = result.data.images;
+        const result = await dispatch(
+            getImages({
+                limit,
+                skip: images.length,
+            })
+        ).unwrap();
 
-            setImages((prev) => [...prev, ...newImages]);
-            setTotalCount(result.data.totalCount);
+        const newImages = result.data.images;
 
-            if (newImages.length === 0 || images.length + newImages.length >= result.data.totalCount) {
-                setHasMore(false);
-            }
+        setImages((prev) => [...prev, ...newImages]);
+        setTotalCount(result.data.totalCount);
 
-        } catch (error) {
-            console.log(error);
-        } finally {
-            setLoading(false);
+        if (
+            newImages.length === 0 ||
+            images.length + newImages.length >= result.data.totalCount
+        ) {
+            setHasMore(false);
         }
-    }, [dispatch, images.length, loading, hasMore]);
+
+    } catch (error) {
+        console.log(error);
+        setFetchError(true);
+
+    } finally {
+        setLoading(false);
+    }
+
+}, [dispatch, images.length, loading, hasMore, fetchError]);
 
     useEffect(() => {
         const currentLoader = loaderRef.current;
@@ -145,7 +154,7 @@ export default function HomePage() {
             if (error instanceof AxiosError) console.log(error.message);
         } finally {
             dispatch(clearUser());
-            navigate("/");
+            // navigate("/");
         }
     };
 
@@ -162,7 +171,6 @@ export default function HomePage() {
         if (!draggingItem || draggingItem === targetId) return;
 
         try {
-            console.log(draggingItem, targetOrder, targetId);
 
             await dispatch(reArrangeImages({ draggedId: draggingItem, targetOrder })).unwrap();
 
@@ -191,7 +199,6 @@ export default function HomePage() {
                     ...img,
                     order: totalCount - index - 1,
                 }));
-                console.log(ordered);
                 return ordered
 
             });
@@ -262,6 +269,10 @@ export default function HomePage() {
         setTotalCount(prev => prev - 1);
     };
 
+    if (!user) {
+        navigate("/")
+    }
+
 
     return (
         <div className="min-h-screen bg-[#FAFAF9] font-sans">
@@ -277,7 +288,7 @@ export default function HomePage() {
                         className="w-9 h-9 bg-[#C1121F] rounded-full flex items-center justify-center text-white text-[0.8rem] font-semibold cursor-pointer"
                         title="My account"
                     >
-                        {user.name[0]}
+                        {user.name[0].toUpperCase()}
                     </div>
                     <button
                         onClick={handleLogout}
@@ -368,6 +379,14 @@ export default function HomePage() {
                 )}
                 <div ref={loaderRef} className="h-10 flex items-center justify-center">
                     {loading && <p>Loading...</p>}
+                    {fetchError && (
+                        <button
+                            onClick={() => setFetchError(false)}
+                            className="px-4 py-2 border rounded"
+                        >
+                            Retry
+                        </button>
+                    )}
                 </div>
             </main>
 

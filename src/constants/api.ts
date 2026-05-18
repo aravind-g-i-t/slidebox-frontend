@@ -7,10 +7,10 @@ export const API = {
         REFRESH: "/auth/refresh",
         RESEND_OTP: "/auth/otp/resend",
         VERIFY_OTP: "/auth/otp",
+        RESET_OTP:"/auth/reset/otp",
         GOOGLE_SIGNIN:"/auth/google",
         VERIFY_EMAIL:'/auth/reset/email',
-        VERIFY_RESET_OTP:'/auth/reset/otp',
-        RESET_PASSWORD:'/auth/reset'
+        RESET_PASSWORD:'/auth/reset/password'
     },
     IMAGES:{
         BASE:"/images",

@@ -2,11 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { AppDispatch } from "../redux/store";
-import { verifyOTP } from "../services/authServices";
+import { resetOTP, verifyOTP } from "../services/authServices";
 
 const OTP_LENGTH = 6;
 
-export default function VerifyOtpPage() {
+interface Props {
+  mode: "signup" | "reset"
+}
+
+export default function VerifyOtpPage({ mode = "signup" }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useDispatch<AppDispatch>();
@@ -35,7 +39,7 @@ export default function VerifyOtpPage() {
   useEffect(() => {
     if (!otpExpiresAt) return;
     const expiresMs = new Date(otpExpiresAt).getTime();
-    
+
 
     const update = () => {
       const diff = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
@@ -83,8 +87,12 @@ export default function VerifyOtpPage() {
     inputRefs.current[focusIdx]?.focus();
   };
 
+  const isReset = mode === "reset"
+
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("Handle verify otp running");
+    
     const otp = digits.join("");
     if (otp.length < OTP_LENGTH) {
       setError("Please enter all 6 digits.");
@@ -97,8 +105,26 @@ export default function VerifyOtpPage() {
     try {
       setLoading(true);
       setError("");
-      await dispatch(verifyOTP({ email, otp })).unwrap();
-      navigate("/signin");
+      console.log(email,otp);
+      
+
+      const result = await dispatch(
+        isReset
+          ? resetOTP({ email, otp })
+          : verifyOTP({ email, otp })
+      ).unwrap();
+      console.log(result);
+      
+
+      if (isReset) {
+        navigate("/new-password", {
+          state: {
+            resetToken: result.data.resetToken,
+          },
+        });
+      } else {
+        navigate("/signin");
+      }
     } catch {
       setError("Invalid OTP. Please try again.");
     } finally {

@@ -28,7 +28,7 @@ export const signup = createAsyncThunk(
 
 export const signin = createAsyncThunk(
     "/signin",
-    async (input:SigninPayload, { rejectWithValue }) => {
+    async (input: SigninPayload, { rejectWithValue }) => {
         try {
             const result = await axiosInstance.post(API.AUTH.SIGNIN, input);
             console.log(result);
@@ -50,7 +50,7 @@ export const signin = createAsyncThunk(
 
 export const verifyOTP = createAsyncThunk(
     "/verify-otp",
-    async (inputData:VerifyOTPPayload, { rejectWithValue }) => {
+    async (inputData: VerifyOTPPayload, { rejectWithValue }) => {
         try {
             console.log(inputData);
             const result = await axiosInstance.post(API.AUTH.VERIFY_OTP, inputData);
@@ -107,8 +107,70 @@ export const logout = createAsyncThunk(
                 return rejectWithValue(error.response?.data?.message || "Invalid request");
             }
             console.log(error);
-            
+
             return rejectWithValue("Something went wrong. Please try again.");
         }
     },
+)
+
+export const resetOTP = createAsyncThunk(
+    "/reset-otp",
+    async (inputData: VerifyOTPPayload, { rejectWithValue }) => {
+        try {
+            console.log(inputData);
+            const result = await axiosInstance.post(API.AUTH.RESET_OTP, inputData);
+            console.log(result);
+
+            if (!result.data.success) {
+                return rejectWithValue(result.data.message)
+            }
+            return result.data
+        } catch (error: unknown) {
+
+            if (error instanceof AxiosError) {
+                return rejectWithValue(error.response?.data?.message || "Invalid request");
+            }
+            return rejectWithValue("Something went wrong. Please try again.");
+        }
+    }
+)
+
+export const verifyEmail = createAsyncThunk(
+    "/email/verify",
+    async (input: { email: string }, { rejectWithValue }) => {
+        try {
+            const result = await axiosInstance.post(API.AUTH.VERIFY_EMAIL, input);
+
+            if (!result.data.success) {
+                return rejectWithValue(result.data.message)
+            }
+            return result.data
+        } catch (error: unknown) {
+
+            if (error instanceof AxiosError) {
+                return rejectWithValue(error.response?.data?.message || "Invalid request");
+            }
+            return rejectWithValue("Something went wrong. Please try again.");
+        }
+    }
+)
+
+export const resetPassword = createAsyncThunk(
+    "/password/reset",
+    async (input: { resetToken: string; password: string }, { rejectWithValue }) => {
+        try {
+            const result = await axiosInstance.post(API.AUTH.RESET_PASSWORD, input);
+
+            if (!result.data.success) {
+                return rejectWithValue(result.data.message)
+            }
+            return result.data
+        } catch (error: unknown) {
+
+            if (error instanceof AxiosError) {
+                return rejectWithValue(error.response?.data?.message || "Invalid request");
+            }
+            return rejectWithValue("Something went wrong. Please try again.");
+        }
+    }
 )
