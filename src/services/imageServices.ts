@@ -34,9 +34,8 @@ export const getImages = createAsyncThunk(
                 params:{
                     skip,
                     limit
-                },
-                withCredentials:true
-            });
+                }
+        });
             console.log(result);
 
             if (!result.data.success) {

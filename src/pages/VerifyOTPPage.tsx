@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { AppDispatch } from "../redux/store";
-import { resetOTP, verifyOTP } from "../services/authServices";
+import { resendOTP, resetOTP, verifyOTP } from "../services/authServices";
 
 const OTP_LENGTH = 6;
 
@@ -16,12 +16,14 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
   const dispatch = useDispatch<AppDispatch>();
 
   const email: string = location.state?.email ?? "";
-  const otpExpiresAt: string = location.state?.otpExpiresAt ?? "";
 
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const [otpExpiresAt, setOtpExpiresAt] = useState(
+    location.state?.otpExpiresAt ?? "");
+
   const [secondsLeft, setSecondsLeft] = useState(() => {
     if (!otpExpiresAt) return 0;
 
@@ -32,21 +34,27 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
       )
     );
   });
-
   const totalSeconds = secondsLeft;
 
-  // Compute seconds left from otpExpiresAt
   useEffect(() => {
     if (!otpExpiresAt) return;
+
     const expiresMs = new Date(otpExpiresAt).getTime();
 
-
-    const update = () => {
-      const diff = Math.max(0, Math.floor((expiresMs - Date.now()) / 1000));
-      setSecondsLeft(diff);
+    const updateTimer = () => {
+      setSecondsLeft(
+        Math.max(
+          0,
+          Math.floor((expiresMs - Date.now()) / 1000)
+        )
+      );
     };
-    const id = setInterval(update, 1000);
-    return () => clearInterval(id);
+
+    updateTimer();
+
+    const interval = setInterval(updateTimer, 1000);
+
+    return () => clearInterval(interval);
   }, [otpExpiresAt]);
 
   const expired = secondsLeft === 0;
@@ -92,7 +100,7 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log("Handle verify otp running");
-    
+
     const otp = digits.join("");
     if (otp.length < OTP_LENGTH) {
       setError("Please enter all 6 digits.");
@@ -105,8 +113,8 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
     try {
       setLoading(true);
       setError("");
-      console.log(email,otp);
-      
+      console.log(email, otp);
+
 
       const result = await dispatch(
         isReset
@@ -114,7 +122,7 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
           : verifyOTP({ email, otp })
       ).unwrap();
       console.log(result);
-      
+
 
       if (isReset) {
         navigate("/new-password", {
@@ -127,6 +135,27 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
       }
     } catch {
       setError("Invalid OTP. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!email) {
+      return;
+    }
+    try {
+      setError("");
+
+      const result = await dispatch(resendOTP({ email })).unwrap();
+
+      setOtpExpiresAt(result.data.otpExpiresAt);
+
+      setDigits(Array(OTP_LENGTH).fill(""));
+
+
+    } catch {
+      setError("Failed to resend OTP");
     } finally {
       setLoading(false);
     }
@@ -534,7 +563,14 @@ export default function VerifyOtpPage({ mode = "signup" }: Props) {
 
           <p className="sb-resend">
             Didn't get a code?{" "}
-            <a href="/signup">Resend OTP</a>
+            <button
+              style={{color: loading?"grey":"red"}}
+              type="button"
+              onClick={handleResend}
+              disabled={ loading}
+            >
+              Resend OTP
+            </button>
           </p>
         </div>
       </div>

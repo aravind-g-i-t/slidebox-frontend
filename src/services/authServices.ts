@@ -70,6 +70,28 @@ export const verifyOTP = createAsyncThunk(
     }
 )
 
+export const resendOTP = createAsyncThunk(
+    "/otp/resend",
+    async (inputData: {email:string}, { rejectWithValue }) => {
+        try {
+            console.log(inputData);
+            const result = await axiosInstance.post(API.AUTH.RESEND_OTP, inputData);
+            console.log(result);
+
+            if (!result.data.success) {
+                return rejectWithValue(result.data.message)
+            }
+            return result.data
+        } catch (error: unknown) {
+
+            if (error instanceof AxiosError) {
+                return rejectWithValue(error.response?.data?.message || "Invalid request");
+            }
+            return rejectWithValue("Something went wrong. Please try again.");
+        }
+    }
+)
+
 export const tokenRefresh = createAsyncThunk(
     "/auth/refresh",
     async (_, { rejectWithValue }) => {
