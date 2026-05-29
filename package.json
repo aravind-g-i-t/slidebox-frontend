@@ -13,11 +13,13 @@
     "@dnd-kit/react": "^0.4.0",
     "@reduxjs/toolkit": "^2.11.2",
     "axios": "^1.16.0",
+    "browser-image-compression": "^2.0.2",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-redux": "^9.2.0",
     "react-router-dom": "^7.15.0",
-    "redux-persist": "^6.0.0"
+    "redux-persist": "^6.0.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

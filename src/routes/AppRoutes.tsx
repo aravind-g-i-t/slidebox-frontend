@@ -5,7 +5,6 @@ import HomePage from "../pages/HomePage"
 import VerifyOtpPage from "../pages/VerifyOTPPage"
 import { useSelector } from "react-redux"
 import type { RootState } from "../redux/store"
-import MockHome from "../pages/MockHome"
 import ForgotPasswordPage from "../pages/ForgotPasswordPage"
 import NewPasswordPage from "../pages/NewPasswordPage"
 
@@ -24,7 +23,6 @@ const AppRoutes = () => {
       {!user && <Route path="/signup" element={<SignupPage/>}/>}
       {!user && <Route path="/verify-otp" element={<VerifyOtpPage mode="signup"/>}/>}
       {user && <Route path="/home" element={<HomePage/>}/>}
-      <Route path="/mockhome" element={<MockHome/>}/>
       <Route path="/forgot-password" element={<ForgotPasswordPage/>}/>
       <Route path="/new-password" element={<NewPasswordPage/>}/>
       <Route path="/reset-otp" element={<VerifyOtpPage mode="reset"/>}/>

@@ -6,6 +6,7 @@ import { deleteImage, getImages, reArrangeImages, updateImageFile, updateImageTi
 import { logout } from "../services/authServices";
 import { clearUser } from "../redux/slices/userSlice";
 import { AxiosError } from "axios";
+import imageCompression from "browser-image-compression";
 
 interface ImageItem {
     id: string;
@@ -41,46 +42,68 @@ export default function HomePage() {
     const [editFile, setEditFile] = useState<File | null>(null)
     const [isTitleEditable, setIsTitleEditable] = useState(false);
     const [deleteingId, setDeletingId] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState<boolean>(false);
+    const [isCompressing, setIsCompressing] = useState(false);
 
     const loaderRef = useRef<HTMLDivElement | null>(null)
     const limit = 20;
 
-    const fetchImages = useCallback(async () => {
+    const compressImage = async (file: File): Promise<File> => {
+        const options = {
+            maxSizeMB: 1,
+            maxWidthOrHeight: 1920,
+            useWebWorker: true,
+        };
 
-    if (loading || !hasMore || fetchError) return;
+        return await imageCompression(file, options);
+    };
 
-    try {
-        setLoading(true);
-        setFetchError(false);
+    const formatFileSize = (bytes: number) => {
+        const kb = bytes / 1024;
 
-        const result = await dispatch(
-            getImages({
-                limit,
-                skip: images.length,
-            })
-        ).unwrap();
-
-        const newImages = result.data.images;
-
-        setImages((prev) => [...prev, ...newImages]);
-        setTotalCount(result.data.totalCount);
-
-        if (
-            newImages.length === 0 ||
-            images.length + newImages.length >= result.data.totalCount
-        ) {
-            setHasMore(false);
+        if (kb < 1024) {
+            return `${kb.toFixed(1)} KB`;
         }
 
-    } catch (error) {
-        console.log(error);
-        setFetchError(true);
+        return `${(kb / 1024).toFixed(1)} MB`;
+    };
 
-    } finally {
-        setLoading(false);
-    }
+    const fetchImages = useCallback(async () => {
 
-}, [dispatch, images.length, loading, hasMore, fetchError]);
+        if (loading || !hasMore || fetchError) return;
+
+        try {
+            setLoading(true);
+            setFetchError(false);
+
+            const result = await dispatch(
+                getImages({
+                    limit,
+                    skip: images.length,
+                })
+            ).unwrap();
+
+            const newImages = result.data.images;
+
+            setImages((prev) => [...prev, ...newImages]);
+            setTotalCount(result.data.totalCount);
+
+            if (
+                newImages.length === 0 ||
+                images.length + newImages.length >= result.data.totalCount
+            ) {
+                setHasMore(false);
+            }
+
+        } catch (error) {
+            console.log(error);
+            setFetchError(true);
+
+        } finally {
+            setLoading(false);
+        }
+
+    }, [dispatch, images.length, loading, hasMore, fetchError]);
 
     useEffect(() => {
         const currentLoader = loaderRef.current;
@@ -109,17 +132,24 @@ export default function HomePage() {
         };
     }, [fetchImages]);
 
-    const addFilePreviews = (files: File[]) => {
-        files.forEach((file) => {
+    const addFilePreviews = async (files: File[]) => {
+        setIsCompressing(true);
+        for (const file of files) {
+            const compressedFile = await compressImage(file);
             const reader = new FileReader();
             reader.onload = (ev) => {
                 setPendingFiles((prev) => [
                     ...prev,
-                    { file, preview: ev.target?.result as string, title: file.name.replace(/\.[^.]+$/, "") },
+                    {
+                        file: compressedFile,
+                        preview: ev.target?.result as string,
+                        title: file.name.replace(/\.[^.]+$/, ""),
+                    },
                 ]);
             };
-            reader.readAsDataURL(file);
-        });
+            reader.readAsDataURL(compressedFile);
+        }
+        setIsCompressing(false);
     };
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -136,15 +166,18 @@ export default function HomePage() {
     };
 
     const handleSubmit = async () => {
+        setIsUploading(true)
         const formData = new FormData();
         formData.append("metadatas", JSON.stringify(pendingFiles.map((item) => ({ title: item.title }))));
         pendingFiles.forEach((item) => formData.append("images", item.file));
 
         const result = await dispatch(uploadImages(formData)).unwrap();
+        setIsUploading(false)
         setImages((prev) => [...result.data.images, ...prev]);
         setTotalCount((prev) => prev + result.data.images.length);
         setPendingFiles([]);
         setUploadModal(false);
+
     };
 
     const handleLogout = async () => {
@@ -189,10 +222,8 @@ export default function HomePage() {
                     return prev;
                 }
 
-                // remove dragged item
                 const [draggedItem] = updated.splice(draggedIndex, 1);
 
-                // insert into new position
                 updated.splice(targetIndex, 0, draggedItem);
 
                 const ordered = updated.map((img, index) => ({
@@ -407,8 +438,9 @@ export default function HomePage() {
                                 <p className="text-[0.75rem] text-[#aaa] mt-0.5 m-0">JPEG, PNG, WebP — up to 10MB each</p>
                             </div>
                             <button
-                                onClick={() => { setUploadModal(false); setPendingFiles([]); }}
-                                className="w-8 h-8 rounded-lg flex items-center justify-center text-[#aaa] hover:text-[#444] hover:bg-[#F5F4F2] transition-all"
+                                onClick={() => { if (!isCompressing) { setUploadModal(false); setPendingFiles([]); } }}
+                                disabled={isCompressing}
+                                className="w-8 h-8 rounded-lg flex items-center justify-center text-[#aaa] hover:text-[#444] hover:bg-[#F5F4F2] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 ✕
                             </button>
@@ -417,15 +449,33 @@ export default function HomePage() {
                         {/* Body */}
                         <div className="px-6 py-5">
                             {/* Drop zone */}
-                            <label className="block border-[1.5px] border-dashed border-[#D5D3D0] rounded-xl p-8 text-center bg-[#FAFAF9] cursor-pointer hover:border-[#C1121F] hover:bg-[#FFF8F8] transition-all">
-                                <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3">
-                                    <span className="text-blue-500 text-xl">↑</span>
-                                </div>
-                                <p className="text-[0.88rem] font-medium text-[#1a1a1a] mb-1">Drop images here</p>
-                                <p className="text-[0.78rem] text-[#aaa] mb-3">or click to browse your files</p>
-                                <span className="inline-block text-[0.8rem] px-4 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
-                                    Choose files
-                                </span>
+                            <label className={`block border-[1.5px] border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${isCompressing
+                                ? "border-[#C1121F] bg-[#FFF8F8]"
+                                : "border-[#D5D3D0] bg-[#FAFAF9] hover:border-[#C1121F] hover:bg-[#FFF8F8]"
+                                }`}>
+                                {isCompressing ? (
+                                    <>
+                                        <div className="w-11 h-11 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
+                                            <svg className="animate-spin h-5 w-5 text-[#C1121F]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                            </svg>
+                                        </div>
+                                        <p className="text-[0.88rem] font-medium text-[#C1121F] mb-1">Compressing images…</p>
+                                        <p className="text-[0.78rem] text-[#aaa]">This may take a moment for large files</p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-3">
+                                            <span className="text-blue-500 text-xl">↑</span>
+                                        </div>
+                                        <p className="text-[0.88rem] font-medium text-[#1a1a1a] mb-1">Drop images here</p>
+                                        <p className="text-[0.78rem] text-[#aaa] mb-3">or click to browse your files</p>
+                                        <span className="inline-block text-[0.8rem] px-4 py-1.5 rounded-lg border border-blue-200 bg-blue-50 text-blue-600">
+                                            Choose files
+                                        </span>
+                                    </>
+                                )}
                                 <input
                                     ref={uploadFileRef}
                                     type="file"
@@ -433,6 +483,7 @@ export default function HomePage() {
                                     accept="image/*"
                                     onChange={handleFileInput}
                                     className="hidden"
+                                    disabled={isCompressing}
                                 />
                             </label>
 
@@ -457,7 +508,7 @@ export default function HomePage() {
                                             />
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
                                                 <span className="text-[0.72rem] text-[#bbb]">
-                                                    {(f.file.size / 1024 / 1024).toFixed(1)} MB
+                                                    {formatFileSize(f.file.size)}
                                                 </span>
                                                 <button
                                                     onClick={() => removePending(i)}
@@ -482,15 +533,41 @@ export default function HomePage() {
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setPendingFiles([])}
-                                        className="px-3.5 h-8 rounded-lg text-[0.82rem] font-medium border border-[#E5E5E2] bg-white text-[#666] hover:border-[#C1121F] hover:text-[#C1121F] transition-all"
+                                        disabled={isCompressing}
+                                        className="px-3.5 h-8 rounded-lg text-[0.82rem] font-medium border border-[#E5E5E2] bg-white text-[#666] hover:border-[#C1121F] hover:text-[#C1121F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         Clear all
                                     </button>
                                     <button
                                         onClick={handleSubmit}
-                                        className="px-4 h-8 rounded-lg text-[0.82rem] font-medium bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all"
+                                        disabled={isUploading}
+                                        className="px-4 h-8 rounded-lg text-[0.82rem] font-medium bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                                     >
-                                        Upload {pendingFiles.length} image{pendingFiles.length !== 1 ? "s" : ""}
+                                        {isUploading && (
+                                            <svg
+                                                className="animate-spin h-3.5 w-3.5 text-white"
+                                                xmlns="http://www.w3.org/2000/svg"
+                                                fill="none"
+                                                viewBox="0 0 24 24"
+                                            >
+                                                <circle
+                                                    className="opacity-25"
+                                                    cx="12"
+                                                    cy="12"
+                                                    r="10"
+                                                    stroke="currentColor"
+                                                    strokeWidth="4"
+                                                />
+                                                <path
+                                                    className="opacity-75"
+                                                    fill="currentColor"
+                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                                                />
+                                            </svg>
+                                        )}
+                                        {isUploading
+                                            ? "Uploading..."
+                                            : `Upload ${pendingFiles.length} image${pendingFiles.length !== 1 ? "s" : ""}`}
                                     </button>
                                 </div>
                             </div>

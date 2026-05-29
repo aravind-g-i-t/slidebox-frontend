@@ -1,6 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
 import type { User } from "../../types/authTypes";
-// import { signin } from "../../services/authServices";
 
 
 
@@ -24,12 +23,7 @@ const userSlice = createSlice({
             state.user=action.payload
         }
     },
-    // extraReducers: (builder) => {
-    //     builder
-    //         .addCase(signin.fulfilled, (state, action) => {
-    //             state.user=action.payload.data.user
-    //         })
-    // }
+
 });
 
 
