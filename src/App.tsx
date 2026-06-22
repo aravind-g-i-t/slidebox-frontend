@@ -1,12 +1,13 @@
+import { ToastProvider } from "./providers/ToastProvider"
 import AppRoutes from "./routes/AppRoutes"
 
 
 function App() {
 
   return (
-    <>
-    <AppRoutes/>
-    </>
+    <ToastProvider>
+      <AppRoutes />
+    </ToastProvider>
   )
 }
 

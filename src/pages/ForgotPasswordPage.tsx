@@ -3,10 +3,13 @@ import { useDispatch } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import type { AppDispatch } from "../redux/store";
 import { verifyEmail } from "../services/authServices";
+import { useToast } from "../hooks/useToast";
 import {
   AuthLayout, AuthLeftPanel, AuthStepList, AuthFormField,
   AuthSubmitButton, AuthErrorBanner,
 } from "../components/index";
+import { isValidEmail } from "../utils/validation";
+import { getErrorMessage } from "../utils/errors";
 
 const STEPS = [
   { label: "Enter your email", sub: "We'll send you a reset code", state: "active" as const },
@@ -17,6 +20,7 @@ const STEPS = [
 export default function ForgotPasswordPage() {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
   const [email, setEmail]     = useState("");
   const [loading, setLoading] = useState(false);
@@ -25,14 +29,29 @@ export default function ForgotPasswordPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (!isValidEmail(trimmedEmail)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
-      const result = await dispatch(verifyEmail({ email })).unwrap();
-      navigate("/reset-otp", { state: { email, otpExpiresAt: result.data.otpExpiresAt } });
+      const result = await dispatch(verifyEmail({ email: trimmedEmail })).unwrap();
+      showToast("Reset code sent. Check your inbox.", "success");
+      navigate("/reset-otp", { state: { email: trimmedEmail, otpExpiresAt: result.data.otpExpiresAt } });
       setSent(true);
-    } catch {
-      setError("No account found with that email address.");
+    } catch (err) {
+      const message = getErrorMessage(err, "No account found with that email address.");
+      setError(message);
+      showToast(message, "error");
     } finally {
       setLoading(false);
     }
@@ -64,7 +83,7 @@ export default function ForgotPasswordPage() {
               </AuthSubmitButton>
               <p className="sb-back">
                 Wrong email?{" "}
-                <a href="#" onClick={(e) => { e.preventDefault(); setSent(false); }}>Try again</a>
+                <a href="#" onClick={(e) => { e.preventDefault(); setSent(false); setError(""); }}>Try again</a>
               </p>
             </>
           ) : (

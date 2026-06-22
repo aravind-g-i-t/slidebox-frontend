@@ -1,26 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { AppDispatch } from "../redux/store";
 import { resetPassword } from "../services/authServices";
+import { useToast } from "../hooks/useToast";
+import { getPasswordStrength } from "../utils/validation";
+import { getErrorMessage } from "../utils/errors";
 import {
   AuthLayout, AuthLeftPanel, AuthStepList, AuthFormField,
   AuthSubmitButton, AuthErrorBanner,
 } from "../components/index";
-
-function getStrength(pw: string): { score: number; label: string; color: string } {
-  let score = 0;
-  if (pw.length >= 8)           score++;
-  if (/[A-Z]/.test(pw))         score++;
-  if (/[0-9]/.test(pw))         score++;
-  if (/[^A-Za-z0-9]/.test(pw))  score++;
-  if (pw.length >= 12)          score++;
-
-  if (score <= 1) return { score, label: "Weak",   color: "#E24B4A" };
-  if (score <= 2) return { score, label: "Fair",   color: "#F4A261" };
-  if (score <= 3) return { score, label: "Good",   color: "#2A9D8F" };
-                  return { score, label: "Strong", color: "#40916C" };
-}
 
 const STEPS = [
   { label: "Enter your email",   sub: "We'll send you a reset code", state: "done"   as const },
@@ -28,10 +17,13 @@ const STEPS = [
   { label: "Set a new password", sub: "Choose something strong",     state: "active" as const },
 ];
 
+const MIN_PASSWORD_SCORE = 2;
+
 export default function NewPasswordPage() {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useToast();
 
   const resetToken: string = location.state?.resetToken ?? "";
 
@@ -40,21 +32,44 @@ export default function NewPasswordPage() {
   const [loading, setLoading]   = useState(false);
   const [error, setError]       = useState("");
 
-  const strength = getStrength(password);
-  const passwordsMatch = password && confirm && password === confirm;
+  const strength = getPasswordStrength(password);
+  const passwordsMatch = password.length > 0 && confirm.length > 0 && password === confirm;
   const mismatch       = confirm.length > 0 && password !== confirm;
+
+  useEffect(() => {
+    if (!resetToken) {
+      showToast("Your reset session has expired. Please request a new code.", "warning");
+      navigate("/forgot-password", { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password !== confirm)  { setError("Passwords do not match."); return; }
-    if (strength.score < 2)    { setError("Please choose a stronger password."); return; }
+
+    if (!password || !confirm) {
+      setError("Please fill in both password fields.");
+      return;
+    }
+    if (strength.score < MIN_PASSWORD_SCORE) {
+      setError("Please choose a stronger password.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("Passwords do not match.");
+      return;
+    }
+
     try {
       setLoading(true);
       setError("");
       await dispatch(resetPassword({ resetToken, password })).unwrap();
+      showToast("Password updated. You can now sign in.", "success");
       navigate("/signin", { state: { resetSuccess: true } });
-    } catch {
-      setError("Something went wrong. Please try again.");
+    } catch (err) {
+      const message = getErrorMessage(err, "Something went wrong. Please try again.");
+      setError(message);
+      showToast(message, "error");
     } finally {
       setLoading(false);
     }
@@ -121,7 +136,7 @@ export default function NewPasswordPage() {
             <AuthSubmitButton
               loading={loading}
               loadingText="Saving…"
-              disabled={!passwordsMatch || strength.score < 2}
+              disabled={!passwordsMatch || strength.score < MIN_PASSWORD_SCORE}
             >
               Save new password
             </AuthSubmitButton>

@@ -7,6 +7,7 @@ import { logout } from "../services/authServices";
 import { clearUser } from "../redux/slices/userSlice";
 import { AxiosError } from "axios";
 import imageCompression from "browser-image-compression";
+import { useToast } from "../hooks/useToast";
 
 interface ImageItem {
     id: string;
@@ -24,10 +25,30 @@ interface NewImage {
 
 const MOCK_IMAGES: ImageItem[] = [];
 
+const getErrorMessage = (error: unknown, fallback: string) => {
+    if (error instanceof AxiosError) {
+        return error.response?.data?.message ?? fallback;
+    }
+    return fallback;
+};
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+const validateImageFile = (file: File): string | null => {
+    if (!file.type.startsWith("image/")) {
+        return `"${file.name}" isn't a supported image file.`;
+    }
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+        return `"${file.name}" is over the 10MB limit.`;
+    }
+    return null;
+};
+
 export default function HomePage() {
     const user = useSelector((state: RootState) => state.user.user)!;
     const navigate = useNavigate();
     const dispatch = useDispatch<AppDispatch>();
+    const { showToast } = useToast();
     const [images, setImages] = useState<ImageItem[]>(MOCK_IMAGES);
     const [uploadModal, setUploadModal] = useState(false);
     const [pendingFiles, setPendingFiles] = useState<NewImage[]>([]);
@@ -44,6 +65,9 @@ export default function HomePage() {
     const [deleteingId, setDeletingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
     const [isCompressing, setIsCompressing] = useState(false);
+    const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
+    const [isReplacingImage, setIsReplacingImage] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const loaderRef = useRef<HTMLDivElement | null>(null)
     const limit = 20;
@@ -96,14 +120,14 @@ export default function HomePage() {
             }
 
         } catch (error) {
-            console.log(error);
+            showToast(getErrorMessage(error, "Couldn't load images. Please try again."), "error");
             setFetchError(true);
 
         } finally {
             setLoading(false);
         }
 
-    }, [dispatch, images.length, loading, hasMore, fetchError]);
+    }, [dispatch, images.length, loading, hasMore, fetchError, showToast]);
 
     useEffect(() => {
         const currentLoader = loaderRef.current;
@@ -133,23 +157,41 @@ export default function HomePage() {
     }, [fetchImages]);
 
     const addFilePreviews = async (files: File[]) => {
-        setIsCompressing(true);
+        const validFiles: File[] = [];
+
         for (const file of files) {
-            const compressedFile = await compressImage(file);
-            const reader = new FileReader();
-            reader.onload = (ev) => {
-                setPendingFiles((prev) => [
-                    ...prev,
-                    {
-                        file: compressedFile,
-                        preview: ev.target?.result as string,
-                        title: file.name.replace(/\.[^.]+$/, ""),
-                    },
-                ]);
-            };
-            reader.readAsDataURL(compressedFile);
+            const validationError = validateImageFile(file);
+            if (validationError) {
+                showToast(validationError, "warning");
+                continue;
+            }
+            validFiles.push(file);
         }
-        setIsCompressing(false);
+
+        if (validFiles.length === 0) return;
+
+        setIsCompressing(true);
+        try {
+            for (const file of validFiles) {
+                const compressedFile = await compressImage(file);
+                const reader = new FileReader();
+                reader.onload = (ev) => {
+                    setPendingFiles((prev) => [
+                        ...prev,
+                        {
+                            file: compressedFile,
+                            preview: ev.target?.result as string,
+                            title: file.name.replace(/\.[^.]+$/, ""),
+                        },
+                    ]);
+                };
+                reader.readAsDataURL(compressedFile);
+            }
+        } catch (error) {
+            showToast(getErrorMessage(error, "Couldn't process one or more images."), "error");
+        } finally {
+            setIsCompressing(false);
+        }
     };
 
     const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,25 +208,33 @@ export default function HomePage() {
     };
 
     const handleSubmit = async () => {
-        setIsUploading(true)
-        const formData = new FormData();
-        formData.append("metadatas", JSON.stringify(pendingFiles.map((item) => ({ title: item.title }))));
-        pendingFiles.forEach((item) => formData.append("images", item.file));
+        setIsUploading(true);
+        try {
+            const formData = new FormData();
+            formData.append("metadatas", JSON.stringify(pendingFiles.map((item) => ({ title: item.title }))));
+            pendingFiles.forEach((item) => formData.append("images", item.file));
 
-        const result = await dispatch(uploadImages(formData)).unwrap();
-        setIsUploading(false)
-        setImages((prev) => [...result.data.images, ...prev]);
-        setTotalCount((prev) => prev + result.data.images.length);
-        setPendingFiles([]);
-        setUploadModal(false);
-
+            const result = await dispatch(uploadImages(formData)).unwrap();
+            setImages((prev) => [...result.data.images, ...prev]);
+            setTotalCount((prev) => prev + result.data.images.length);
+            setPendingFiles([]);
+            setUploadModal(false);
+            showToast(
+                `${result.data.images.length} image${result.data.images.length !== 1 ? "s" : ""} uploaded`,
+                "success"
+            );
+        } catch (error) {
+            showToast(getErrorMessage(error, "Upload failed. Please try again."), "error");
+        } finally {
+            setIsUploading(false);
+        }
     };
 
     const handleLogout = async () => {
         try {
             await dispatch(logout()).unwrap();
         } catch (error) {
-            if (error instanceof AxiosError) console.log(error.message);
+            showToast(getErrorMessage(error, "Couldn't sign out. Please try again."), "error");
         } finally {
             dispatch(clearUser());
             // navigate("/");
@@ -234,7 +284,7 @@ export default function HomePage() {
 
             });
         } catch (error) {
-            console.log(error as string);
+            showToast(getErrorMessage(error, "Couldn't reorder images."), "error");
 
         } finally {
             setDraggingItem(null);
@@ -267,37 +317,64 @@ export default function HomePage() {
 
     const handleUpdateTitle = async () => {
         if (!selectedImage) return;
-        await dispatch(updateImageTitle({ imageId: selectedImage.id, title: editTitle.trim() })).unwrap();
-        setImages(prev =>
-            prev.map(img =>
-                img.id === selectedImage.id ? { ...img, title: editTitle } : img
-            )
-        );
-        setSelectedImage(prev => prev ? { ...prev, title: editTitle } : null);
-
+        setIsUpdatingTitle(true);
+        try {
+            await dispatch(updateImageTitle({ imageId: selectedImage.id, title: editTitle.trim() })).unwrap();
+            setImages(prev =>
+                prev.map(img =>
+                    img.id === selectedImage.id ? { ...img, title: editTitle } : img
+                )
+            );
+            setSelectedImage(prev => prev ? { ...prev, title: editTitle } : null);
+            showToast("Title updated", "success");
+        } catch (error) {
+            showToast(getErrorMessage(error, "Couldn't update title. Please try again."), "error");
+            throw error;
+        } finally {
+            setIsUpdatingTitle(false);
+        }
     }
 
     const handleUpdateImage = async () => {
         if (!selectedImage || !editFile) return;
-        const formData = new FormData();
-        formData.append("image", editFile);
-        const result = await dispatch(updateImageFile({ imageId: selectedImage.id, data: formData })).unwrap();
-        const newUrl = result.data.imageUrl;
-        setImages(prev =>
-            prev.map(img =>
-                img.id === selectedImage.id ? { ...img, imageUrl: newUrl } : img
-            )
-        );
-        setSelectedImage(prev => prev ? { ...prev, imageUrl: newUrl } : null);
-        setEditFile(null);
+        setIsReplacingImage(true);
+        try {
+            const formData = new FormData();
+            formData.append("image", editFile);
+            const result = await dispatch(updateImageFile({ imageId: selectedImage.id, data: formData })).unwrap();
+            const newUrl = result.data.imageUrl;
+            setImages(prev =>
+                prev.map(img =>
+                    img.id === selectedImage.id ? { ...img, imageUrl: newUrl } : img
+                )
+            );
+            setSelectedImage(prev => prev ? { ...prev, imageUrl: newUrl } : null);
+            setEditFile(null);
+            showToast("Image replaced", "success");
+        } catch (error) {
+            showToast(getErrorMessage(error, "Couldn't replace image. Please try again."), "error");
+        } finally {
+            setIsReplacingImage(false);
+        }
     };
 
     const handleDelete = async () => {
         if (!deleteingId) return;
-        await dispatch(deleteImage({ imageId: deleteingId })).unwrap();
-        setDeletingId(null);
-        setImages(prev => prev.filter(img => img.id !== deleteingId));
-        setTotalCount(prev => prev - 1);
+        setIsDeleting(true);
+        try {
+            await dispatch(deleteImage({ imageId: deleteingId })).unwrap();
+            setImages(prev => prev.filter(img => img.id !== deleteingId));
+            setTotalCount(prev => prev - 1);
+            if (selectedImage?.id === deleteingId) {
+                setSelectedImage(null);
+            }
+            showToast("Image deleted", "success");
+            setDeletingId(null);
+        } catch (error) {
+            showToast(getErrorMessage(error, "Couldn't delete image. Please try again."), "error");
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     if (!user) {
@@ -627,7 +704,6 @@ export default function HomePage() {
                         <div className="px-6 py-5 flex flex-col gap-5">
 
                             {/* Update title */}
-                            {/* Update title */}
                             <div className="flex flex-col gap-2">
                                 <label className="text-[0.8rem] font-semibold text-[#888] uppercase tracking-wide">
                                     Title
@@ -651,16 +727,24 @@ export default function HomePage() {
                                         <div className="flex gap-1.5">
                                             <button
                                                 onClick={() => { setEditTitle(selectedImage.title); setIsTitleEditable(false); }}
-                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all"
+                                                disabled={isUpdatingTitle}
+                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                                             >
                                                 Cancel
                                             </button>
                                             <button
-                                                onClick={async () => { await handleUpdateTitle(); setIsTitleEditable(false); }}
-                                                disabled={editTitle === selectedImage.title || !editTitle.trim()}
+                                                onClick={async () => {
+                                                    try {
+                                                        await handleUpdateTitle();
+                                                        setIsTitleEditable(false);
+                                                    } catch {
+                                                        // keep edit mode open on failure so the user can retry
+                                                    }
+                                                }}
+                                                disabled={isUpdatingTitle || editTitle === selectedImage.title || !editTitle.trim()}
                                                 className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                             >
-                                                Save
+                                                {isUpdatingTitle ? "Saving..." : "Save"}
                                             </button>
                                         </div>
                                     ) : (
@@ -688,7 +772,14 @@ export default function HomePage() {
                                             className="hidden"
                                             onChange={e => {
                                                 const f = e.target.files?.[0];
-                                                if (f) setEditFile(f);
+                                                if (!f) return;
+                                                const validationError = validateImageFile(f);
+                                                if (validationError) {
+                                                    showToast(validationError, "warning");
+                                                    e.target.value = "";
+                                                    return;
+                                                }
+                                                setEditFile(f);
                                             }}
                                         />
                                     </label>
@@ -697,13 +788,15 @@ export default function HomePage() {
                                             <span className="text-[0.82rem] text-[#888] truncate max-w-[160px]">{editFile.name}</span>
                                             <button
                                                 onClick={handleUpdateImage}
-                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all"
+                                                disabled={isReplacingImage}
+                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                                             >
-                                                Upload
+                                                {isReplacingImage ? "Uploading..." : "Upload"}
                                             </button>
                                             <button
                                                 onClick={() => setEditFile(null)}
-                                                className="text-[#ccc] hover:text-[#C1121F] text-sm"
+                                                disabled={isReplacingImage}
+                                                className="text-[#ccc] hover:text-[#C1121F] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
                                             >
                                                 ✕
                                             </button>
@@ -731,15 +824,17 @@ export default function HomePage() {
                         <div className="flex gap-2 justify-end">
                             <button
                                 onClick={() => setDeletingId(null)}
-                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all"
+                                disabled={isDeleting}
+                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDelete}
-                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all"
+                                disabled={isDeleting}
+                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                             >
-                                Delete
+                                {isDeleting ? "Deleting..." : "Delete"}
                             </button>
                         </div>
                     </div>
