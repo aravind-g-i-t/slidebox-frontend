@@ -8,6 +8,7 @@ import { clearUser } from "../redux/slices/userSlice";
 import { AxiosError } from "axios";
 import imageCompression from "browser-image-compression";
 import { useToast } from "../hooks/useToast";
+import ImageEditor from "./ImageEditor"; 
 
 interface ImageItem {
     id: string;
@@ -57,10 +58,9 @@ export default function HomePage() {
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState(false);
     const [hasMore, setHasMore] = useState(true);
-    const [draggingItem, setDraggingItem] = useState<string | null>(null)
+    const [draggingItem, setDraggingItem] = useState<string | null>(null);
     const [selectedImage, setSelectedImage] = useState<ImageItem | null>(null);
     const [editTitle, setEditTitle] = useState("");
-    const [editFile, setEditFile] = useState<File | null>(null)
     const [isTitleEditable, setIsTitleEditable] = useState(false);
     const [deleteingId, setDeletingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -69,7 +69,11 @@ export default function HomePage() {
     const [isReplacingImage, setIsReplacingImage] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const loaderRef = useRef<HTMLDivElement | null>(null)
+
+
+    const [isEditingImage, setIsEditingImage] = useState(false);
+
+    const loaderRef = useRef<HTMLDivElement | null>(null);
     const limit = 20;
 
     const compressImage = async (file: File): Promise<File> => {
@@ -78,98 +82,59 @@ export default function HomePage() {
             maxWidthOrHeight: 1920,
             useWebWorker: true,
         };
-
         return await imageCompression(file, options);
     };
 
     const formatFileSize = (bytes: number) => {
         const kb = bytes / 1024;
-
-        if (kb < 1024) {
-            return `${kb.toFixed(1)} KB`;
-        }
-
+        if (kb < 1024) return `${kb.toFixed(1)} KB`;
         return `${(kb / 1024).toFixed(1)} MB`;
     };
 
     const fetchImages = useCallback(async () => {
-
         if (loading || !hasMore || fetchError) return;
-
         try {
             setLoading(true);
             setFetchError(false);
-
             const result = await dispatch(
-                getImages({
-                    limit,
-                    skip: images.length,
-                })
+                getImages({ limit, skip: images.length })
             ).unwrap();
-
             const newImages = result.data.images;
-
             setImages((prev) => [...prev, ...newImages]);
             setTotalCount(result.data.totalCount);
-
             if (
                 newImages.length === 0 ||
                 images.length + newImages.length >= result.data.totalCount
             ) {
                 setHasMore(false);
             }
-
         } catch (error) {
             showToast(getErrorMessage(error, "Couldn't load images. Please try again."), "error");
             setFetchError(true);
-
         } finally {
             setLoading(false);
         }
-
     }, [dispatch, images.length, loading, hasMore, fetchError, showToast]);
 
     useEffect(() => {
         const currentLoader = loaderRef.current;
-
         if (!currentLoader) return;
-
         const observer = new IntersectionObserver(
-            (entries) => {
-                const firstEntry = entries[0];
-
-                if (firstEntry.isIntersecting) {
-                    fetchImages();
-                }
-            },
-            {
-                root: null,
-                rootMargin: "200px",
-                threshold: 0,
-            }
+            (entries) => { if (entries[0].isIntersecting) fetchImages(); },
+            { root: null, rootMargin: "200px", threshold: 0 }
         );
-
         observer.observe(currentLoader);
-
-        return () => {
-            observer.disconnect();
-        };
+        return () => { observer.disconnect(); };
     }, [fetchImages]);
 
     const addFilePreviews = async (files: File[]) => {
         const validFiles: File[] = [];
-
         for (const file of files) {
             const validationError = validateImageFile(file);
-            if (validationError) {
-                showToast(validationError, "warning");
-                continue;
-            }
+            if (validationError) { showToast(validationError, "warning"); continue; }
             validFiles.push(file);
         }
-
         if (validFiles.length === 0) return;
-
         setIsCompressing(true);
         try {
             for (const file of validFiles) {
@@ -178,11 +143,7 @@ export default function HomePage() {
                 reader.onload = (ev) => {
                     setPendingFiles((prev) => [
                         ...prev,
-                        {
-                            file: compressedFile,
-                            preview: ev.target?.result as string,
-                            title: file.name.replace(/\.[^.]+$/, ""),
-                        },
+                        { file: compressedFile, preview: ev.target?.result as string, title: file.name.replace(/\.[^.]+$/, "") },
                     ]);
                 };
                 reader.readAsDataURL(compressedFile);
@@ -213,7 +174,6 @@ export default function HomePage() {
             const formData = new FormData();
             formData.append("metadatas", JSON.stringify(pendingFiles.map((item) => ({ title: item.title }))));
             pendingFiles.forEach((item) => formData.append("images", item.file));
-
             const result = await dispatch(uploadImages(formData)).unwrap();
             setImages((prev) => [...result.data.images, ...prev]);
             setTotalCount((prev) => prev + result.data.images.length);
@@ -237,95 +197,63 @@ export default function HomePage() {
             showToast(getErrorMessage(error, "Couldn't sign out. Please try again."), "error");
         } finally {
             dispatch(clearUser());
-            // navigate("/");
         }
     };
 
-    const handleDrag = (e: DragEvent, id: string) => {
-        e.preventDefault();
-        setDraggingItem(id)
-    }
-
-    const handleDragOver = (e: DragEvent) => {
-        e.preventDefault();
-    }
+    const handleDrag = (e: DragEvent, id: string) => { e.preventDefault(); setDraggingItem(id); };
+    const handleDragOver = (e: DragEvent) => { e.preventDefault(); };
 
     const handleDrop = async (targetId: string, targetOrder: number) => {
         if (!draggingItem || draggingItem === targetId) return;
-
         try {
-
             await dispatch(reArrangeImages({ draggedId: draggingItem, targetOrder })).unwrap();
-
             setImages((prev) => {
                 const updated = [...prev];
-
-                const draggedIndex = updated.findIndex(
-                    (img) => img.id === draggingItem
-                );
-
-                const targetIndex = updated.findIndex(
-                    (img) => img.id === targetId
-                );
-
-                if (draggedIndex === -1 || targetIndex === -1) {
-                    return prev;
-                }
-
+                const draggedIndex = updated.findIndex((img) => img.id === draggingItem);
+                const targetIndex = updated.findIndex((img) => img.id === targetId);
+                if (draggedIndex === -1 || targetIndex === -1) return prev;
                 const [draggedItem] = updated.splice(draggedIndex, 1);
-
                 updated.splice(targetIndex, 0, draggedItem);
-
-                const ordered = updated.map((img, index) => ({
-                    ...img,
-                    order: totalCount - index - 1,
-                }));
-                return ordered
-
+                return updated.map((img, index) => ({ ...img, order: totalCount - index - 1 }));
             });
         } catch (error) {
             showToast(getErrorMessage(error, "Couldn't reorder images."), "error");
-
         } finally {
             setDraggingItem(null);
-        };
-    }
+        }
+    };
 
     const handleSelect = (img: ImageItem) => {
         setSelectedImage(img);
         setEditTitle(img.title);
-        setEditFile(null)
-    }
+        setIsEditingImage(false);
+    };
 
     const handleNext = () => {
         if (!selectedImage) return;
-        const currentIndex = images.findIndex(img => img.id === selectedImage.id);
-        const nextIndex = (currentIndex + 1) % images.length;
-        setSelectedImage(images[nextIndex]);
-        setEditTitle(images[nextIndex].title);
-        setEditFile(null);
-    }
+        const currentIndex = images.findIndex((img) => img.id === selectedImage.id);
+        const next = images[(currentIndex + 1) % images.length];
+        setSelectedImage(next);
+        setEditTitle(next.title);
+        setIsEditingImage(false);
+    };
 
     const handlePrev = () => {
         if (!selectedImage) return;
-        const currentIndex = images.findIndex(img => img.id === selectedImage.id);
-        const prevIndex = (currentIndex - 1 + images.length) % images.length;
-        setSelectedImage(images[prevIndex]);
-        setEditTitle(images[prevIndex].title);
-        setEditFile(null);
-    }
+        const currentIndex = images.findIndex((img) => img.id === selectedImage.id);
+        const prev = images[(currentIndex - 1 + images.length) % images.length];
+        setSelectedImage(prev);
+        setEditTitle(prev.title);
+        setIsEditingImage(false);
+    };
 
     const handleUpdateTitle = async () => {
         if (!selectedImage) return;
         setIsUpdatingTitle(true);
         try {
             await dispatch(updateImageTitle({ imageId: selectedImage.id, title: editTitle.trim() })).unwrap();
-            setImages(prev =>
-                prev.map(img =>
-                    img.id === selectedImage.id ? { ...img, title: editTitle } : img
-                )
-            );
-            setSelectedImage(prev => prev ? { ...prev, title: editTitle } : null);
+            setImages((prev) => prev.map((img) => img.id === selectedImage.id ? { ...img, title: editTitle } : img));
+            setSelectedImage((prev) => prev ? { ...prev, title: editTitle } : null);
             showToast("Title updated", "success");
         } catch (error) {
             showToast(getErrorMessage(error, "Couldn't update title. Please try again."), "error");
@@ -333,26 +261,24 @@ export default function HomePage() {
         } finally {
             setIsUpdatingTitle(false);
         }
-    }
+    };
 
-    const handleUpdateImage = async () => {
-        if (!selectedImage || !editFile) return;
+
+
+    const handleUpdateImage = async (file: File) => {
+        if (!selectedImage) return;
         setIsReplacingImage(true);
         try {
             const formData = new FormData();
-            formData.append("image", editFile);
+            formData.append("image", file);
             const result = await dispatch(updateImageFile({ imageId: selectedImage.id, data: formData })).unwrap();
             const newUrl = result.data.imageUrl;
-            setImages(prev =>
-                prev.map(img =>
-                    img.id === selectedImage.id ? { ...img, imageUrl: newUrl } : img
-                )
-            );
-            setSelectedImage(prev => prev ? { ...prev, imageUrl: newUrl } : null);
-            setEditFile(null);
-            showToast("Image replaced", "success");
+            setImages((prev) => prev.map((img) => img.id === selectedImage.id ? { ...img, imageUrl: newUrl } : img));
+            setSelectedImage((prev) => prev ? { ...prev, imageUrl: newUrl } : null);
+            setIsEditingImage(false);
+            showToast("Image updated", "success");
         } catch (error) {
-            showToast(getErrorMessage(error, "Couldn't replace image. Please try again."), "error");
+            showToast(getErrorMessage(error, "Couldn't update image. Please try again."), "error");
         } finally {
             setIsReplacingImage(false);
         }
@@ -363,11 +289,9 @@ export default function HomePage() {
         setIsDeleting(true);
         try {
             await dispatch(deleteImage({ imageId: deleteingId })).unwrap();
-            setImages(prev => prev.filter(img => img.id !== deleteingId));
-            setTotalCount(prev => prev - 1);
-            if (selectedImage?.id === deleteingId) {
-                setSelectedImage(null);
-            }
+            setImages((prev) => prev.filter((img) => img.id !== deleteingId));
+            setTotalCount((prev) => prev - 1);
+            if (selectedImage?.id === deleteingId) setSelectedImage(null);
             showToast("Image deleted", "success");
             setDeletingId(null);
         } catch (error) {
@@ -377,10 +301,7 @@ export default function HomePage() {
         }
     };
 
-    if (!user) {
-        navigate("/")
-    }
-
+    if (!user) navigate("/");
 
     return (
         <div className="min-h-screen bg-[#FAFAF9] font-sans">
@@ -439,14 +360,14 @@ export default function HomePage() {
                     <div className="grid gap-[18px]" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
                         {images.map((img) => (
                             <div
+                                key={img.id}
                                 draggable
                                 onDrag={(e) => handleDrag(e, img.id)}
-                                onDragOver={e => handleDragOver(e)}
+                                onDragOver={handleDragOver}
                                 onDrop={() => handleDrop(img.id, img.order)}
                                 onClick={() => handleSelect(img)}
                                 className="group bg-white border border-[#EEECEA] rounded-2xl overflow-hidden transition-all duration-200 cursor-default hover:border-[#E0DEDA] hover:shadow-[0_4px_20px_rgba(0,0,0,0.07)]"
                             >
-                                {/* Image wrapper */}
                                 <div className="relative aspect-[4/3] overflow-hidden bg-[#F0EFED]">
                                     <img
                                         src={img.imageUrl}
@@ -454,19 +375,9 @@ export default function HomePage() {
                                         loading="lazy"
                                         className="w-full h-full object-cover block transition-transform duration-300 group-hover:scale-105"
                                     />
-                                    {/* Overlay */}
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/[0.18] transition-all duration-200 flex items-start justify-end p-2.5 gap-1.5">
-                                        {/* <button
-                                            className="w-[30px] h-[30px] rounded-lg border-none bg-white/90 text-[#444] flex items-center justify-center cursor-pointer text-[13px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-white"
-                                            title="Edit"
-                                        >
-                                            ✏
-                                        </button> */}
                                         <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setDeletingId(img.id);
-                                            }}
+                                            onClick={(e) => { e.stopPropagation(); setDeletingId(img.id); }}
                                             className="w-[30px] h-[30px] rounded-lg border-none bg-white/90 text-[#444] flex items-center justify-center cursor-pointer text-[13px] opacity-0 group-hover:opacity-100 transition-opacity duration-200 hover:bg-[#C1121F] hover:text-white"
                                             title="Delete"
                                         >
@@ -474,8 +385,6 @@ export default function HomePage() {
                                         </button>
                                     </div>
                                 </div>
-
-                                {/* Card body */}
                                 <div className="px-3.5 py-3 flex items-center justify-between gap-2">
                                     <span className="text-[0.88rem] font-medium text-[#1a1a1a] truncate">
                                         {img.title}
@@ -485,13 +394,11 @@ export default function HomePage() {
                         ))}
                     </div>
                 )}
+
                 <div ref={loaderRef} className="h-10 flex items-center justify-center">
                     {loading && <p>Loading...</p>}
                     {fetchError && (
-                        <button
-                            onClick={() => setFetchError(false)}
-                            className="px-4 py-2 border rounded"
-                        >
+                        <button onClick={() => setFetchError(false)} className="px-4 py-2 border rounded">
                             Retry
                         </button>
                     )}
@@ -506,7 +413,7 @@ export default function HomePage() {
                 >
                     <div
                         className="bg-white rounded-2xl w-full max-w-[500px] border border-[#EEECEA] overflow-hidden"
-                        onClick={e => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="px-6 py-4 border-b border-[#EEECEA] flex items-center justify-between">
@@ -525,11 +432,7 @@ export default function HomePage() {
 
                         {/* Body */}
                         <div className="px-6 py-5">
-                            {/* Drop zone */}
-                            <label className={`block border-[1.5px] border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${isCompressing
-                                ? "border-[#C1121F] bg-[#FFF8F8]"
-                                : "border-[#D5D3D0] bg-[#FAFAF9] hover:border-[#C1121F] hover:bg-[#FFF8F8]"
-                                }`}>
+                            <label className={`block border-[1.5px] border-dashed rounded-xl p-8 text-center cursor-pointer transition-all ${isCompressing ? "border-[#C1121F] bg-[#FFF8F8]" : "border-[#D5D3D0] bg-[#FAFAF9] hover:border-[#C1121F] hover:bg-[#FFF8F8]"}`}>
                                 {isCompressing ? (
                                     <>
                                         <div className="w-11 h-11 rounded-full bg-red-50 flex items-center justify-center mx-auto mb-3">
@@ -564,29 +467,19 @@ export default function HomePage() {
                                 />
                             </label>
 
-                            {/* Pending files */}
                             {pendingFiles.length > 0 && (
                                 <div className="flex flex-col gap-2 mt-4 max-h-[220px] overflow-y-auto">
                                     {pendingFiles.map((f, i) => (
-                                        <div
-                                            key={i}
-                                            className="flex items-center gap-2.5 bg-[#FAFAF9] border border-[#EEECEA] rounded-xl px-2.5 py-2"
-                                        >
-                                            <img
-                                                className="w-11 h-11 rounded-lg object-cover flex-shrink-0"
-                                                src={f.preview}
-                                                alt=""
-                                            />
+                                        <div key={i} className="flex items-center gap-2.5 bg-[#FAFAF9] border border-[#EEECEA] rounded-xl px-2.5 py-2">
+                                            <img className="w-11 h-11 rounded-lg object-cover flex-shrink-0" src={f.preview} alt="" />
                                             <input
                                                 className="flex-1 min-w-0 border border-[#E5E5E2] rounded-lg px-2.5 py-1.5 text-[0.82rem] text-[#1a1a1a] outline-none focus:border-[#C1121F] bg-white"
                                                 value={f.title}
                                                 placeholder="Add a title…"
-                                                onChange={e => updatePendingTitle(i, e.target.value)}
+                                                onChange={(e) => updatePendingTitle(i, e.target.value)}
                                             />
                                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                                                <span className="text-[0.72rem] text-[#bbb]">
-                                                    {formatFileSize(f.file.size)}
-                                                </span>
+                                                <span className="text-[0.72rem] text-[#bbb]">{formatFileSize(f.file.size)}</span>
                                                 <button
                                                     onClick={() => removePending(i)}
                                                     className="w-6 h-6 rounded-md flex items-center justify-center text-[#ccc] hover:text-[#C1121F] hover:bg-[#FFF8F8] transition-all text-sm"
@@ -600,7 +493,6 @@ export default function HomePage() {
                             )}
                         </div>
 
-                        {/* Footer */}
                         {pendingFiles.length > 0 && (
                             <div className="px-6 py-3.5 border-t border-[#EEECEA] flex items-center justify-between">
                                 <span className="text-[0.75rem] text-[#aaa]">
@@ -621,30 +513,12 @@ export default function HomePage() {
                                         className="px-4 h-8 rounded-lg text-[0.82rem] font-medium bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                                     >
                                         {isUploading && (
-                                            <svg
-                                                className="animate-spin h-3.5 w-3.5 text-white"
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                            >
-                                                <circle
-                                                    className="opacity-25"
-                                                    cx="12"
-                                                    cy="12"
-                                                    r="10"
-                                                    stroke="currentColor"
-                                                    strokeWidth="4"
-                                                />
-                                                <path
-                                                    className="opacity-75"
-                                                    fill="currentColor"
-                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                                                />
+                                            <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                                             </svg>
                                         )}
-                                        {isUploading
-                                            ? "Uploading..."
-                                            : `Upload ${pendingFiles.length} image${pendingFiles.length !== 1 ? "s" : ""}`}
+                                        {isUploading ? "Uploading..." : `Upload ${pendingFiles.length} image${pendingFiles.length !== 1 ? "s" : ""}`}
                                     </button>
                                 </div>
                             </div>
@@ -652,172 +526,160 @@ export default function HomePage() {
                     </div>
                 </div>
             )}
+
             {/* Preview / Edit Modal */}
             {selectedImage && (
                 <div
                     className="fixed inset-0 bg-black/70 z-[300] flex items-center justify-center p-4"
-                    onClick={() => setSelectedImage(null)}
+                    onClick={() => { if (!isEditingImage) setSelectedImage(null); }}
                 >
                     <div
                         className="bg-white rounded-2xl w-full max-w-[700px] max-h-[90vh] overflow-y-auto"
-                        onClick={e => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
                     >
                         {/* Header */}
                         <div className="flex items-center justify-between px-6 py-4 border-b border-[#EEECEA]">
-                            <h2 className="text-[1.1rem] font-bold text-[#1a1a1a] truncate">{selectedImage.title}</h2>
+                            <div className="flex items-center gap-2 min-w-0">
+                                {isEditingImage && (
+                                    <button
+                                        onClick={() => setIsEditingImage(false)}
+                                        className="text-[#aaa] hover:text-[#444] transition-colors shrink-0 text-[0.85rem]"
+                                        title="Back to preview"
+                                    >
+                                        ← 
+                                    </button>
+                                )}
+                                <h2 className="text-[1.1rem] font-bold text-[#1a1a1a] truncate">
+                                    {isEditingImage ? "Edit image" : selectedImage.title}
+                                </h2>
+                            </div>
                             <button
-                                className="text-[1.2rem] text-[#aaa] hover:text-[#444] px-1"
+                                className="text-[1.2rem] text-[#aaa] hover:text-[#444] px-1 shrink-0"
                                 onClick={() => setSelectedImage(null)}
                             >
                                 ✕
                             </button>
                         </div>
 
-                        {/* Image + nav */}
-                        <div className="relative bg-[#F0EFED] flex items-center justify-center" style={{ minHeight: 320 }}>
-                            {/* Prev */}
-                            <button
-                                onClick={handlePrev}
-                                className="absolute left-3 z-10 w-9 h-9 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center text-[#444] text-lg"
-                                title="Previous"
-                            >
-                                ‹
-                            </button>
-
-                            <img
-                                src={editFile ? URL.createObjectURL(editFile) : selectedImage.imageUrl}
-                                alt={selectedImage.title}
-                                className="max-h-[400px] max-w-full object-contain rounded"
+                        {isEditingImage ? (
+                            /* ── Inline editor ─────────────────────────────────────────────── */
+                            <ImageEditor
+                                src={selectedImage.imageUrl}
+                                onSave={handleUpdateImage}
+                                onCancel={() => setIsEditingImage(false)}
+                                isSaving={isReplacingImage}
                             />
+                        ) : (
+                            /* ── Normal preview + edit panels ──────────────────────────────── */
+                            <>
+                                {/* Image + nav */}
+                                <div className="relative bg-[#F0EFED] flex items-center justify-center" style={{ minHeight: 320 }}>
+                                    <button
+                                        onClick={handlePrev}
+                                        className="absolute left-3 z-10 w-9 h-9 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center text-[#444] text-lg"
+                                        title="Previous"
+                                    >
+                                        ‹
+                                    </button>
+                                    <img
+                                        src={selectedImage.imageUrl}
+                                        alt={selectedImage.title}
+                                        className="max-h-[400px] max-w-full object-contain rounded"
+                                    />
+                                    <button
+                                        onClick={handleNext}
+                                        className="absolute right-3 z-10 w-9 h-9 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center text-[#444] text-lg"
+                                        title="Next"
+                                    >
+                                        ›
+                                    </button>
+                                </div>
 
-                            {/* Next */}
-                            <button
-                                onClick={handleNext}
-                                className="absolute right-3 z-10 w-9 h-9 rounded-full bg-white/90 hover:bg-white shadow flex items-center justify-center text-[#444] text-lg"
-                                title="Next"
-                            >
-                                ›
-                            </button>
-                        </div>
+                                {/* Edit panels */}
+                                <div className="px-6 py-5 flex flex-col gap-5">
 
-                        {/* Edit panels */}
-                        <div className="px-6 py-5 flex flex-col gap-5">
-
-                            {/* Update title */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[0.8rem] font-semibold text-[#888] uppercase tracking-wide">
-                                    Title
-                                </label>
-                                <div className="flex gap-2">
-                                    {isTitleEditable ? (
-                                        <input
-                                            autoFocus
-                                            className="flex-1 border border-[#E5E5E2] rounded-lg px-3 py-2 text-[0.88rem] text-[#1a1a1a] outline-none focus:border-[#C1121F]"
-                                            value={editTitle}
-                                            onChange={e => setEditTitle(e.target.value)}
-                                            placeholder="Image title"
-                                        />
-                                    ) : (
-                                        <span className="flex-1 px-3 py-2 text-[0.88rem] text-[#1a1a1a] border border-transparent rounded-lg bg-[#FAFAF9]">
-                                            {editTitle}
-                                        </span>
-                                    )}
-
-                                    {isTitleEditable ? (
-                                        <div className="flex gap-1.5">
-                                            <button
-                                                onClick={() => { setEditTitle(selectedImage.title); setIsTitleEditable(false); }}
-                                                disabled={isUpdatingTitle}
-                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={async () => {
-                                                    try {
-                                                        await handleUpdateTitle();
-                                                        setIsTitleEditable(false);
-                                                    } catch {
-                                                        // keep edit mode open on failure so the user can retry
-                                                    }
-                                                }}
-                                                disabled={isUpdatingTitle || editTitle === selectedImage.title || !editTitle.trim()}
-                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                                            >
-                                                {isUpdatingTitle ? "Saving..." : "Save"}
-                                            </button>
+                                    {/* Update title */}
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[0.8rem] font-semibold text-[#888] uppercase tracking-wide">
+                                            Title
+                                        </label>
+                                        <div className="flex gap-2">
+                                            {isTitleEditable ? (
+                                                <input
+                                                    autoFocus
+                                                    className="flex-1 border border-[#E5E5E2] rounded-lg px-3 py-2 text-[0.88rem] text-[#1a1a1a] outline-none focus:border-[#C1121F]"
+                                                    value={editTitle}
+                                                    onChange={(e) => setEditTitle(e.target.value)}
+                                                    placeholder="Image title"
+                                                />
+                                            ) : (
+                                                <span className="flex-1 px-3 py-2 text-[0.88rem] text-[#1a1a1a] border border-transparent rounded-lg bg-[#FAFAF9]">
+                                                    {editTitle}
+                                                </span>
+                                            )}
+                                            {isTitleEditable ? (
+                                                <div className="flex gap-1.5">
+                                                    <button
+                                                        onClick={() => { setEditTitle(selectedImage.title); setIsTitleEditable(false); }}
+                                                        disabled={isUpdatingTitle}
+                                                        className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        onClick={async () => {
+                                                            try { await handleUpdateTitle(); setIsTitleEditable(false); } catch { /* keep open */ }
+                                                        }}
+                                                        disabled={isUpdatingTitle || editTitle === selectedImage.title || !editTitle.trim()}
+                                                        className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                                                    >
+                                                        {isUpdatingTitle ? "Saving..." : "Save"}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <button
+                                                    onClick={() => setIsTitleEditable(true)}
+                                                    className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all"
+                                                >
+                                                    Edit
+                                                </button>
+                                            )}
                                         </div>
-                                    ) : (
-                                        <button
-                                            onClick={() => setIsTitleEditable(true)}
-                                            className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] transition-all"
-                                        >
-                                            Edit
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
+                                    </div>
 
-                            {/* Replace image */}
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[0.8rem] font-semibold text-[#888] uppercase tracking-wide">
-                                    Replace image
-                                </label>
-                                <div className="flex gap-2 items-center flex-wrap">
-                                    <label className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] cursor-pointer inline-flex items-center transition-all">
-                                        Choose file
-                                        <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={e => {
-                                                const f = e.target.files?.[0];
-                                                if (!f) return;
-                                                const validationError = validateImageFile(f);
-                                                if (validationError) {
-                                                    showToast(validationError, "warning");
-                                                    e.target.value = "";
-                                                    return;
-                                                }
-                                                setEditFile(f);
-                                            }}
-                                        />
-                                    </label>
-                                    {editFile && (
-                                        <>
-                                            <span className="text-[0.82rem] text-[#888] truncate max-w-[160px]">{editFile.name}</span>
+                                    {/* Edit image — replaces old Replace image panel */}
+                                    <div className="flex flex-col gap-2">
+                                        <label className="text-[0.8rem] font-semibold text-[#888] uppercase tracking-wide">
+                                            Image
+                                        </label>
+                                        <div>
                                             <button
-                                                onClick={handleUpdateImage}
-                                                disabled={isReplacingImage}
-                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#C1121F] bg-[#C1121F] text-white hover:bg-[#A50F1A] transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                                                onClick={() => setIsEditingImage(true)}
+                                                className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] cursor-pointer inline-flex items-center gap-2 transition-all"
                                             >
-                                                {isReplacingImage ? "Uploading..." : "Upload"}
+                                                
+                                                Edit image
                                             </button>
-                                            <button
-                                                onClick={() => setEditFile(null)}
-                                                disabled={isReplacingImage}
-                                                className="text-[#ccc] hover:text-[#C1121F] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                                            >
-                                                ✕
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
+                                            <p className="text-[0.75rem] text-[#bbb] mt-1.5">
+                                                Crop, rotate, flip, and adjust brightness &amp; contrast.
+                                            </p>
+                                        </div>
+                                    </div>
 
-                            {/* Index indicator */}
-                            <p className="text-[0.8rem] text-[#bbb] text-center">
-                                {images.findIndex(i => i.id === selectedImage.id) + 1} of {images.length}
-                            </p>
-                        </div>
+                                    {/* Index indicator */}
+                                    <p className="text-[0.8rem] text-[#bbb] text-center">
+                                        {images.findIndex((i) => i.id === selectedImage.id) + 1} of {images.length}
+                                    </p>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
 
+            {/* Delete confirm */}
             {deleteingId && (
-                <div
-                    className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4"
-                >
+                <div className="fixed inset-0 bg-black/70 z-[400] flex items-center justify-center p-4">
                     <div className="bg-white p-6 rounded-lg shadow-lg">
                         <h3 className="text-lg font-bold mb-4">Delete Image</h3>
                         <p className="text-[#666] mb-4">Are you sure you want to delete this image?</p>
