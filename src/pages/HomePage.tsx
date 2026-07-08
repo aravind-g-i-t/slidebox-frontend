@@ -8,7 +8,7 @@ import { clearUser } from "../redux/slices/userSlice";
 import { AxiosError } from "axios";
 import imageCompression from "browser-image-compression";
 import { useToast } from "../hooks/useToast";
-import ImageEditor from "./ImageEditor"; 
+import ImageEditor from "./ImageEditor";
 
 interface ImageItem {
     id: string;
@@ -68,6 +68,8 @@ export default function HomePage() {
     const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
     const [isReplacingImage, setIsReplacingImage] = useState(false);
     const [isDeleting, setIsDeleting] = useState(false);
+    const [draggingPendingIndex, setDraggingPendingIndex] = useState<number | null>(null);
+    const [dragOverPendingIndex, setDragOverPendingIndex] = useState<number | null>(null);
 
 
 
@@ -301,6 +303,36 @@ export default function HomePage() {
         }
     };
 
+    const handlePendingDragStart = (index: number) => {
+        setDraggingPendingIndex(index);
+    };
+
+    const handlePendingDragOver = (e: DragEvent, index: number) => {
+        e.preventDefault();
+        if (index !== dragOverPendingIndex) setDragOverPendingIndex(index);
+    };
+
+    const handlePendingDrop = (targetIndex: number) => {
+        if (draggingPendingIndex === null || draggingPendingIndex === targetIndex) {
+            setDraggingPendingIndex(null);
+            setDragOverPendingIndex(null);
+            return;
+        }
+        setPendingFiles((prev) => {
+            const updated = [...prev];
+            const [dragged] = updated.splice(draggingPendingIndex, 1);
+            updated.splice(targetIndex, 0, dragged);
+            return updated;
+        });
+        setDraggingPendingIndex(null);
+        setDragOverPendingIndex(null);
+    };
+
+    const handlePendingDragEnd = () => {
+        setDraggingPendingIndex(null);
+        setDragOverPendingIndex(null);
+    };
+
     if (!user) navigate("/");
 
     return (
@@ -470,7 +502,21 @@ export default function HomePage() {
                             {pendingFiles.length > 0 && (
                                 <div className="flex flex-col gap-2 mt-4 max-h-[220px] overflow-y-auto">
                                     {pendingFiles.map((f, i) => (
-                                        <div key={i} className="flex items-center gap-2.5 bg-[#FAFAF9] border border-[#EEECEA] rounded-xl px-2.5 py-2">
+                                        <div
+                                            key={i}
+                                            draggable
+                                            onDragStart={() => handlePendingDragStart(i)}
+                                            onDragOver={(e) => handlePendingDragOver(e, i)}
+                                            onDrop={() => handlePendingDrop(i)}
+                                            onDragEnd={handlePendingDragEnd}
+                                            className={`flex items-center gap-2.5 bg-[#FAFAF9] border rounded-xl px-2.5 py-2 transition-all cursor-grab active:cursor-grabbing ${draggingPendingIndex === i
+                                                    ? "opacity-40 border-[#C1121F]"
+                                                    : dragOverPendingIndex === i
+                                                        ? "border-[#C1121F] border-dashed"
+                                                        : "border-[#EEECEA]"
+                                                }`}
+                                        >
+                                            <span className="text-[#ccc] text-sm select-none px-0.5" title="Drag to reorder">⠿</span>
                                             <img className="w-11 h-11 rounded-lg object-cover flex-shrink-0" src={f.preview} alt="" />
                                             <input
                                                 className="flex-1 min-w-0 border border-[#E5E5E2] rounded-lg px-2.5 py-1.5 text-[0.82rem] text-[#1a1a1a] outline-none focus:border-[#C1121F] bg-white"
@@ -546,7 +592,7 @@ export default function HomePage() {
                                         className="text-[#aaa] hover:text-[#444] transition-colors shrink-0 text-[0.85rem]"
                                         title="Back to preview"
                                     >
-                                        ← 
+                                        ←
                                     </button>
                                 )}
                                 <h2 className="text-[1.1rem] font-bold text-[#1a1a1a] truncate">
@@ -657,7 +703,7 @@ export default function HomePage() {
                                                 onClick={() => setIsEditingImage(true)}
                                                 className="px-4 h-9 rounded-lg text-[0.85rem] font-medium border border-[#E5E5E2] bg-white text-[#444] hover:border-[#C1121F] hover:text-[#C1121F] cursor-pointer inline-flex items-center gap-2 transition-all"
                                             >
-                                                
+
                                                 Edit image
                                             </button>
                                             <p className="text-[0.75rem] text-[#bbb] mt-1.5">
