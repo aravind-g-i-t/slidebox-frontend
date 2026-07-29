@@ -714,7 +714,7 @@ export default function HomePage() {
 
                                     {/* Index indicator */}
                                     <p className="text-[0.8rem] text-[#bbb] text-center">
-                                        {images.findIndex((i) => i.id === selectedImage.id) + 1} of {images.length}
+                                        {images.findIndex((i) => i.id === selectedImage.id) + 1} of {totalCount}
                                     </p>
                                 </div>
                             </>
