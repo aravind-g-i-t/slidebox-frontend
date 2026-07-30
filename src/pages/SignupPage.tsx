@@ -28,8 +28,10 @@ export default function SignupPage() {
       ).unwrap();
       const otpExpiresAt = result.data.otpExpiresAt;
       navigate("/verify-otp", { state: { email, otpExpiresAt } });
-    } catch {
-      setError("Registration failed. Please check your details and try again.");
+    } catch(err) {
+      setError(err as string)
+      
+
     } finally {
       setLoading(false);
     }
